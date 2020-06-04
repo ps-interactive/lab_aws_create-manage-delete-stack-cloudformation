@@ -1,0 +1,402 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  
+  "Description": "This template creates an ALB in 2 AZs in custom VPC with listener on port 80. We will create 2 EC2 instances in different subnets, with Website running on them and put in a Target Group and associate with ALB. Further, this version of template modifies the EC2 instance security group to accept SSH traffic from a new Security Group for Bastion Host. ",
+  
+  
+  "Metadata": {
+    "AWS::CloudFormation::Interface": {
+      "ParameterGroups": [
+        {
+          "Label": {
+            "default": "VPC Details"
+          },
+          "Parameters": [
+            "VPC01",
+            "PublicSubnet1",
+            "PublicSubnet2",
+            "PrivateSubnet1",
+			      "PrivateSubnet2"
+          ]
+        }
+      ]
+    }
+  },
+
+    
+  "Parameters": {
+    "VPC01": {
+      "Description": "Select the correct VPC.",
+	  "Type": "AWS::EC2::VPC::Id"
+    },
+    "PublicSubnet1": {
+      "Description": "Select first Public Subnet where ALB should be launched.",
+      "Type": "AWS::EC2::Subnet::Id"
+    },
+    "PublicSubnet2": {
+      "Description": "Select second Public Subnet where ALB should be launched.",
+      "Type": "AWS::EC2::Subnet::Id"
+    },
+    "PrivateSubnet1": {
+      "Description": "Select first Private Subnet where EC2 instance should be launched.",
+      "Type": "AWS::EC2::Subnet::Id"
+    },
+    "PrivateSubnet2": {
+      "Description": "Select second Private Subnet where EC2 instance should be launched.",
+      "Type": "AWS::EC2::Subnet::Id"
+    }
+  },
+  
+  "Resources": {
+
+    "ALBsg": {      
+        "Type" : "AWS::EC2::SecurityGroup",
+        "Properties" : {
+            "GroupDescription" : "This security groups allows inbound traffic on port 80 for ALB.",
+            "GroupName" : "sgALB",            
+            "SecurityGroupIngress" : [ {
+              "IpProtocol" : "tcp",
+              "FromPort" : 80,
+              "ToPort" : 80,
+              "CidrIp" : "0.0.0.0/0"
+              }
+            ],           
+            "VpcId" : {"Ref": "VPC01"}
+          }   
+    },
+
+    "BastionSg": {      
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+          "GroupDescription" : "This security groups allows inbound traffic on port 22 for Bastion Host.",
+          "GroupName" : "sgBastion",            
+          "SecurityGroupIngress" : [ {
+            "IpProtocol" : "tcp",
+            "FromPort" : 22,
+            "ToPort" : 22,
+            "CidrIp" : "0.0.0.0/0"
+            }
+          ],           
+          "VpcId" : {"Ref": "VPC01"}
+        }   
+  },
+
+    "WEBsg": {
+      "Type" : "AWS::EC2::SecurityGroup",
+        "Properties" : {
+            "GroupDescription" : "This security groups allows inbound traffic on port 80 for Webservers coming from ALB.",
+            "GroupName" : "sgWeb",            
+            "SecurityGroupIngress" : [ {
+              "IpProtocol" : "tcp",
+              "FromPort" : 80,
+              "ToPort" : 80,
+              "SourceSecurityGroupId" : {"Ref": "ALBsg"}
+              },
+              {
+                "IpProtocol" : "tcp",
+                "FromPort" : 22,
+                "ToPort" : 22,
+                "SourceSecurityGroupId" : {"Ref": "BastionSg"}
+                }
+            ],           
+            "VpcId" : {"Ref": "VPC01"}
+          } 
+    },
+
+   
+    "WebServer1": {
+      "Type": "AWS::EC2::Instance",	 
+
+      "Metadata" : {
+        "Comment1" : "Configure the bootstrap helpers to install the Apache Web Server and PHP",
+        "Comment2" : "Save website content to /var/www/html/index.php",
+
+        "AWS::CloudFormation::Init" : {
+          "configSets" : {
+            "Install" : [ "Install" ]
+          },
+
+          "Install" : {
+            "packages" : {
+              "yum" : {
+                "mysql"        : [],
+                "mysql-server" : [],
+                "mysql-libs"   : [],
+                "httpd"        : [],
+                "php"          : [],
+                "php-mysql"    : []
+              }
+            },
+
+            "files" : {
+              "/var/www/html/index.php" : {
+                "content" : { "Fn::Join" : [ "", [
+                  "<html>\n",
+                  "  <head>\n",
+                  "    <title>CloudFormation Lab</title>\n",
+                  "    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+                  "  </head>\n",
+                  "  <body>\n",
+                  "    <h1>Welcome to the AWS CloudFormation Lab</h1>\n",
+                  "    <p/>\n",
+                  "    <?php\n",
+                  "      // Print out the current date and time\n",
+                  "      print \"The Current Date and Time (UTC) is: <br/>\";\n",
+                  "      print date(\"g:i A l, F j Y.\");\n",
+                  "    ?>\n",
+                  "    <p/>\n",
+                  "    <?php\n",
+                  "      // Setup a handle for CURL\n",
+                  "      $curl_handle=curl_init();\n",
+                  "      curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,2);\n",
+                  "      curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);\n",
+                  "      // Get the instance-id of the instance from the instance metadata\n",
+                  "      curl_setopt($curl_handle,CURLOPT_URL,'http://169.254.169.254/latest/meta-data/instance-id');\n",
+                  "      $instanceid = curl_exec($curl_handle);\n",
+                  "      if (empty($instanceid))\n",
+                  "      {\n",
+                  "        print \"Sorry, for some reason, we got no instance id back <br />\";\n",
+                  "      }\n",
+                  "      else\n",
+                  "      {\n",
+                  "        print \"EC2 instance-id = \" . $instanceid . \"<br />\";\n",
+                  "      }\n", 
+                  "    ?>\n",
+                  "    <h2>PHP Information</h2>\n",
+                  "    <p/>\n",
+                  "    <?php\n",
+                  "      phpinfo();\n",
+                  "    ?>\n",
+                  "  </body>\n",
+                  "</html>\n"
+                ]]},
+                "mode"  : "000600",
+                "owner" : "apache",
+                "group" : "apache"
+              }
+            },
+
+            "services" : {
+              "sysvinit" : {  
+                "httpd"   : { "enabled" : "true", "ensureRunning" : "true" }
+              }
+            }
+
+          }
+        }
+      },
+
+      "Properties": {
+        "ImageId": "ami-01d025118d8e760db",       
+        "InstanceType": "t2.micro",
+        "SubnetId": {
+          "Ref": "PrivateSubnet1"
+        },
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+          "#!/bin/bash -xe\n",
+          "yum install -y aws-cfn-bootstrap\n",
+
+          "# Install the files and packages from the metadata\n",
+          "/opt/aws/bin/cfn-init -v ",
+          "         --stack ", { "Ref" : "AWS::StackName" },
+          "         --resource WebServer1 ",
+          "         --configsets Install ",
+          "         --region ", { "Ref" : "AWS::Region" }, "\n"
+          ]
+          ]
+          }
+        },
+        "SecurityGroupIds": [
+          {"Ref": "WEBsg"}
+        ]
+      }
+    },
+	
+    "WebServer2": {
+      "Type": "AWS::EC2::Instance",
+      
+      "Metadata" : {
+        "Comment1" : "Configure the bootstrap helpers to install the Apache Web Server and PHP",
+        "Comment2" : "Save website content to /var/www/html/index.php",
+
+        "AWS::CloudFormation::Init" : {
+          "configSets" : {
+            "Install" : [ "Install" ]
+          },
+
+          "Install" : {
+            "packages" : {
+              "yum" : {
+                "mysql"        : [],
+                "mysql-server" : [],
+                "mysql-libs"   : [],
+                "httpd"        : [],
+                "php"          : [],
+                "php-mysql"    : []
+              }
+            },
+
+            "files" : {
+              "/var/www/html/index.php" : {
+                "content" : { "Fn::Join" : [ "", [
+                  "<html>\n",
+                  "  <head>\n",
+                  "    <title>CloudFormation Lab</title>\n",
+                  "    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\">\n",
+                  "  </head>\n",
+                  "  <body>\n",
+                  "    <h1>Welcome to the AWS CloudFormation Lab</h1>\n",
+                  "    <p/>\n",
+                  "    <?php\n",
+                  "      // Print out the current date and time\n",
+                  "      print \"The Current Date and Time (UTC) is: <br/>\";\n",
+                  "      print date(\"g:i A l, F j Y.\");\n",
+                  "    ?>\n",
+                  "    <p/>\n",
+                  "    <?php\n",
+                  "      // Setup a handle for CURL\n",
+                  "      $curl_handle=curl_init();\n",
+                  "      curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,2);\n",
+                  "      curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);\n",
+                  "      // Get the instance-id of the instance from the instance metadata\n",
+                  "      curl_setopt($curl_handle,CURLOPT_URL,'http://169.254.169.254/latest/meta-data/instance-id');\n",
+                  "      $instanceid = curl_exec($curl_handle);\n",
+                  "      if (empty($instanceid))\n",
+                  "      {\n",
+                  "        print \"Sorry, for some reason, we got no instance id back <br />\";\n",
+                  "      }\n",
+                  "      else\n",
+                  "      {\n",
+                  "        print \"EC2 instance-id = \" . $instanceid . \"<br />\";\n",
+                  "      }\n", 
+                  "    ?>\n",
+                  "    <h2>PHP Information</h2>\n",
+                  "    <p/>\n",
+                  "    <?php\n",
+                  "      phpinfo();\n",
+                  "    ?>\n",
+                  "  </body>\n",
+                  "</html>\n"
+                ]]},
+                "mode"  : "000600",
+                "owner" : "apache",
+                "group" : "apache"
+              }
+            },
+
+            "services" : {
+              "sysvinit" : {  
+                "httpd"   : { "enabled" : "true", "ensureRunning" : "true" }
+              }
+            }
+
+          }
+        }
+      },
+
+      "Properties": {
+        "ImageId": "ami-01d025118d8e760db",
+        "InstanceType": "t2.micro",
+        "SubnetId": {
+          "Ref": "PrivateSubnet2"
+        },
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+          "#!/bin/bash -xe\n",
+          "yum install -y aws-cfn-bootstrap\n",
+
+          "# Install the files and packages from the metadata\n",
+          "/opt/aws/bin/cfn-init -v ",
+          "         --stack ", { "Ref" : "AWS::StackName" },
+          "         --resource WebServer2 ",
+          "         --configsets Install ",
+          "         --region ", { "Ref" : "AWS::Region" }, "\n"
+          ]
+          ]
+          }
+        },
+        "SecurityGroupIds": [
+          {"Ref": "WEBsg"}
+        ]
+      }
+    },
+    
+	"ALB01": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",      
+	  "Properties": {
+        "Subnets": [
+          {
+            "Ref": "PublicSubnet1"
+          },
+          {
+            "Ref": "PublicSubnet2"
+          }
+        ],
+        "Type": "application",
+        "IpAddressType": "ipv4",
+		"SecurityGroups": [
+			{"Ref": "ALBsg"}
+		]
+      }
+    },
+	
+    "TargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+	  "DependsOn":["WebServer1","WebServer2"],
+      "Properties": {        
+        "Port": "80",
+        "Protocol": "HTTP",
+        "TargetType": "instance",
+        "Targets": [
+          {
+            "Id": {
+              "Ref": "WebServer1"
+            },
+            "Port": "80"
+          },
+          {
+            "Id": {
+              "Ref": "WebServer2"
+            },
+            "Port": "80"
+          }
+        ],
+        "TargetGroupAttributes": [
+          {
+            "Key": "deregistration_delay.timeout_seconds",
+            "Value": "60"
+          }
+        ],
+        "VpcId": {
+          "Ref": "VPC01"
+        }
+      }
+    },
+	
+    "Listener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            }
+          }
+        ],
+        "LoadBalancerArn": {
+          "Ref": "ALB01"
+        },
+        "Port": "80",
+        "Protocol": "HTTP"
+      }
+    }
+  },
+
+  "Outputs" : {
+    "ALBDNS" : {
+      "Description" : "Public DNS of the created ALB",
+      "Value" :   { "Fn::GetAtt" : ["ALB01", "DNSName"]}
+    }   
+  }
+
+}
