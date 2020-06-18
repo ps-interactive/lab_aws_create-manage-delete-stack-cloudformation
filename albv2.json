@@ -16,7 +16,7 @@
             "PublicSubnet1",
             "PublicSubnet2",
             "PrivateSubnet1",
-			      "PrivateSubnet2"
+			"PrivateSubnet2"
           ]
         }
       ]
@@ -187,7 +187,7 @@
       },
 
       "Properties": {
-        "ImageId": "ami-01d025118d8e760db",       
+        "ImageId": "ami-086b16d6badeb5716",       
         "InstanceType": "t2.micro",
         "SubnetId": {
           "Ref": "PrivateSubnet1"
@@ -295,7 +295,7 @@
       },
 
       "Properties": {
-        "ImageId": "ami-01d025118d8e760db",
+        "ImageId": "ami-086b16d6badeb5716",
         "InstanceType": "t2.micro",
         "SubnetId": {
           "Ref": "PrivateSubnet2"
